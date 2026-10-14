@@ -326,7 +326,9 @@ function changeQty(id, delta) {
 /* ================================ PAGES ================================== */
 
 function stripHTML() {
-  const products = getProducts();
+    const tous = getProducts();
+  const choisis = tous.filter(p => p.vedette);
+  const products = choisis.length ? choisis : tous; // aucun choix = tous les produits;
   if (products.length === 0) {
     return `<div class="strip-wrap"><div class="strip" style="animation:none;width:auto;justify-content:center;flex-wrap:wrap;">${Array.from({ length: 6 }).map(() => `<div class="thumb">${MARQUE}</div>`).join("")}</div></div>`;
   }
@@ -705,7 +707,7 @@ function adminView() {
     <a class="btn solid" style="display:block;text-align:center;" onclick="addProduct()">Ajouter le produit</a>
   </form>
   <div style="margin-bottom:50px;">
-    ${products.map(p => `<div class="admin-row"><span>${esc(p.nom)} — ${fmt(p.prix)} (${esc((p.categories || []).map(catNom).join(", "))})</span><button onclick="deleteProduct('${esc(p.id)}')">Supprimer</button></div>`).join("") || `<p class="empty">Aucun produit ajouté pour l'instant.</p>`}
+    ${products.map(p => `<div class="admin-row"><span>${esc(p.nom)} — ${fmt(p.prix)} (${esc((p.categories || []).map(catNom).join(", "))})<span><button onclick="basculerVedette('${esc(p.id)}')">${p.vedette ? "★ Dans la bande" : "☆ Ajouter à la bande"}</button> <button onclick="deleteProduct('${esc(p.id)}')">Supprimer</button></span>  `)}
   </div>`;
 }
 
@@ -786,6 +788,22 @@ async function deleteProduct(id) {
   showToast("Produit supprimé ✓");
 }
 
+async function basculerVedette(id) {
+  const produits = getProducts();
+  const p = produits.find(x => x.id === id);
+  if (!p) return;
+  const nouvelle = !p.vedette;
+  if (sb) {
+    const { data, error } = await sb.from("produits").update({ vedette: nouvelle }).eq("id", id).select();
+    if (error) { console.warn("Supabase (bande défilante) :", error); showToast("Modification impossible (voir la console)."); return; }
+    if (!data || data.length === 0) { showToast("Modification non autorisée : reconnectez-vous."); return; }
+  }
+  p.vedette = nouvelle;
+  setProducts(produits);
+  render(false);
+  showToast(nouvelle ? "Ajouté à la bande défilante ✓" : "Retiré de la bande défilante ✓");
+}
+
 async function syncProductsFromSupabase() {
   if (!sb) { produitsCharges = true; return; }
   try {
@@ -794,7 +812,7 @@ async function syncProductsFromSupabase() {
     if (res.error || !res.data) { console.warn("Supabase (sync) :", res.error); return; }
     const produits = res.data.map(p => ({
       id: p.id, nom: p.nom, prix: p.prix, categories: p.categories || [],
-      sousCategorie: p.sous_categorie || "", matiere: p.matiere, description: p.description, photo: p.image_url_1
+            sousCategorie: p.sous_categorie || "", matiere: p.matiere, description: p.description, photo: p.image_url_1, vedette: !!p.vedette
     }));
     setProducts(produits);
     const panier = getCart(); // retire du panier les articles qui n'existent plus
